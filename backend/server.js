@@ -20,15 +20,31 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // CORS setup
+const allowedOrigins = [
+  "https://vyapar-lite-frontend.vercel.app",
+];
+
 app.use(cors({
-  origin: "https://vyapar-lite-frontend.vercel.app", // ✅ Frontend URL
-  credentials: true,                // ✅ Allow cookies
+  origin: function (origin, callback) {
+    // allow requests with no origin (Postman, mobile apps)
+    if (!origin) return callback(null, true);
+
+    // allow vercel preview + prod
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".vercel.app")
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  exposedHeaders: ["Set-Cookie"],   // 🔥 Important for cookies
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  exposedHeaders: ["Set-Cookie"],
 }));
+
 
 // Routes
 // app.use("/api/auth", authRoutes);
