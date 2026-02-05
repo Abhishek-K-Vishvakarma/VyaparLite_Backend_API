@@ -10,7 +10,9 @@ const userSchema = new mongoose.Schema({
   deviceHash: String,
   deviceId: { type: String }, // Track login device
   fcmToken: { type: String }, // For push notifications
-  tokenExpiresAt: { type: Date, default: null }  // ← added this
+  tokenExpiresAt: { type: Date, default: null },  // ← added this
+  otp: String,
+  otpExpired: {type: Date, default: Date.now}
 }, { timestamps: true });
 
 export default mongoose.model("User", userSchema);

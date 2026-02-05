@@ -3,8 +3,9 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/jwt.js";
 import Notification from "../models/Notification.js";
 import { sendPushNotification } from "../utils/pushNotification.js";
-import crypto from "crypto";
-
+import jwt from 'jsonwebtoken';
+import crypto, { verify } from "crypto";
+import otpGenerate from 'otp-generator';
 const hashDevice = (value) => {
   crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -135,7 +136,7 @@ export default {
         maxAge: TOKEN_EXPIRY_MS
       });
 
-  //     // Push notification on success
+      //     // Push notification on success
       if (token && user?.deviceId) {
         await sendPushNotification({
           fcmToken: user.fcmToken,
@@ -144,7 +145,7 @@ export default {
         });
       }
 
-  //     // Success response
+      //     // Success response
       res.status(200).json({
         message: "Login successful",
         user: {
@@ -161,103 +162,7 @@ export default {
       res.status(500).json({ message: "Server error" });
     }
   },
-  /**
-   * LOGIN CONTROLLER
-   */
-  // login: async (req, res) => {
-  //   try {
-  //     const { email, password, deviceId, fcmToken } = req.body;
 
-  //     // Basic validation
-  //     if (!email || !password || !deviceId) {
-  //       return res.status(400).json({ message: "Missing credentials" });
-  //     }
-
-  //     // Find user by email
-  //     const user = await User.findOne({ email });
-  //     if (!user) {
-  //       return res.status(401).json({ message: "Invalid email or password" });
-  //     }
-
-  //     // Password check
-  //     const isMatch = await bcrypt.compare(password, user.password);
-  //     if (!isMatch) {
-  //       return res.status(401).json({ message: "Invalid email or password" });
-  //     }
-
-  //     // DEVICE ENFORCEMENT
-  //     if (user.deviceId && user.deviceId !== deviceId) {
-  //       const isTokenActive = user.tokenExpiresAt
-  //         ? new Date() < new Date(user.tokenExpiresAt)
-  //         : true; // legacy default
-
-  //       if (isTokenActive) {
-  //         // Notify user of blocked login
-  //         await Notification.create({
-  //           user: user._id,
-  //           title: "Blocked Login Attempt",
-  //           message: `Login attempt from a new device (${ deviceId }) was blocked.`,
-  //           type: "SECURITY"
-  //         });
-
-      //     if (user.fcmToken) {
-      //       await sendPushNotification({
-      //         fcmToken: user.fcmToken,
-      //         title: "Security Alert 🚨",
-      //         body: "Login attempt blocked from another device."
-      //       });
-      //     }
-
-      //     return res.status(403).json({
-      //       message: "This user is already logged in on another device"
-      //     });
-      //   }
-      // }
-
-      // UPDATE deviceId, fcmToken, tokenExpiresAt
-  //     const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24h
-  //     user.deviceId = deviceId;
-  //     if (fcmToken) user.fcmToken = fcmToken;
-  //     user.tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS);
-  //     await user.save();
-
-  //     // Generate JWT
-  //     const token = generateToken(user._id, deviceId);
-
-  //     // Set HttpOnly cookie
-  //     res.cookie("token", token, {
-  //       httpOnly: true,
-  //       sameSite: "none",
-  //       secure: process.env.NODE_ENV === "production",
-  //       path: "/",
-  //       maxAge: TOKEN_EXPIRY_MS
-  //     });
-
-  //     // Optional push notification for success
-  //     if (token && user.fcmToken) {
-  //       await sendPushNotification({
-  //         fcmToken: user.fcmToken,
-  //         title: "Login Success",
-  //         body: "You have successfully logged in"
-  //       });
-  //     }
-
-  //     // Success response
-  //     res.status(200).json({
-  //       message: "Login successful",
-  //       user: {
-  //         id: user._id,
-  //         name: user.name,
-  //         email: user.email,
-  //         role: user.role,
-  //         token
-  //       }
-  //     });
-  //   } catch (error) {
-  //     console.error("Login Error:", error);
-  //     res.status(500).json({ message: "Server error" });
-  //   }
-  // },
   myProfile: async (req, res) => {
     try {
       const profile = await User.findOne(req.user._id);
@@ -307,7 +212,57 @@ export default {
       res.status(500).json({ message: "Server error" });
     }
   },
- 
-}
 
+  forgotPassword: async (req, res) => {
+    try {
+      const { email } = req.body;
+      const user = await User.findOne({ email });
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const otp = Math.floor(new Date(100 * Math.random() + 900000));
+      await User.findOneAndUpdate(
+        { email },
+        { otp, otpExpired: Date.now() + 1 * 60 * 1000 },
+        { new: true, runValidators: true }
+      );
+      res.status(200).json({
+        message: "Otp send to user!"
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+
+  verifyOTP: async (req, res) => {
+    try {
+      const {otp} = req.body;
+      const user = await User.findOne({otp});
+      if(otp !== user?.otp){
+         return res.status(400).json({message: "Otp not matched"});
+      }
+      if(Date.now() > user?.otpExpired){
+        res.status(400).json({message: "Otp has been expired!"});
+        delete user?.otp;
+      }
+      await User.findOneAndUpdate({otp}, {otp: null}, {new: true})
+      res.status(200).json({message: "User otp verified successfully!", status_code: 200});
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+
+  resetPassword: async (req, res) => {
+    try {
+      const { email, newPassword } = req.body;
+      const user = await User.findOne({ email });
+      if(user?.email !== email){
+         return res.status(400).json({message: "User does not matched!"});
+      }
+      const hashPassword = await bcrypt.hash(newPassword, 10);
+      await User.findOneAndUpdate({ email }, { password: hashPassword }, {new : true});
+      res.status(200).json({ message: "User reset password successfully!", status_code: 200 });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+}
 

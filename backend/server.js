@@ -48,36 +48,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: "Server Error", error: err.message });
 });
 
-const VERIFY_TOKEN = "vyaparLite@123456abhishek";
-
-/**
- * Webhook verification (GET)
- */
-app.get("/api/webhook/whatsapp", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ WhatsApp webhook verified");
-    return res.status(200).send(challenge);
-  }
-
-  console.log("❌ Webhook verification failed");
-  return res.sendStatus(403);
-});
-
-/**
- * Incoming WhatsApp messages (POST)
- */
-app.post("/api/webhook/whatsapp", (req, res) => {
-  console.log(
-    "📩 WhatsApp event:",
-    JSON.stringify(req.body, null, 2)
-  );
-  res.sendStatus(200);
-});
-
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${ PORT }`));
