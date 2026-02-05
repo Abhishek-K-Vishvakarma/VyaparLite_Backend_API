@@ -21,7 +21,7 @@ app.use(cookieParser());
 
 // CORS setup
 app.use(cors({
-  origin: "http://localhost:5173", // ✅ Frontend URL
+  origin: "https://vyapar-lite-frontend.vercel.app", // ✅ Frontend URL
   credentials: true,                // ✅ Allow cookies
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
