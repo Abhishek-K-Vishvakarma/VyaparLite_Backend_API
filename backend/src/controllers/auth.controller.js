@@ -67,67 +67,52 @@ export default {
   login: async (req, res) => {
     try {
       const { email, password, deviceId, fcmToken } = req.body;
-
       // Basic validation
       if (!email || !password || !deviceId) {
         return res.status(400).json({ message: "Missing credentials" });
       }
-
       // Find user
       const user = await User.findOne({ email });
       if (!user) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
-
       // Password check
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
-
-      // ✅ DEVICE ENFORCEMENT — only block if token is still ACTIVE
-      // ✅ FIXED DEVICE ENFORCEMENT
-      if (user.deviceId && user.deviceId !== deviceId) {
-
-        // Case 1: tokenExpiresAt exists and token is still active → BLOCK
+      //  DEVICE ENFORCEMENT — only block if token is still ACTIVE
+      //  FIXED DEVICE ENFORCEMENT
+      // if (user.deviceId && user.deviceId !== deviceId) {
         // Case 2: tokenExpiresAt is null but deviceId exists → BLOCK (legacy/safe default)
-        const isTokenActive = user.tokenExpiresAt
-          ? new Date() < new Date(user.tokenExpiresAt)  // token exists → check expiry
-          : true;                                        // token is null → assume active (safe default)
+      //   const isTokenActive = user.tokenExpiresAt
+      //     ? new Date() < new Date(user.tokenExpiresAt)  // token exists → check expiry
+      //     : true;                                        // token is null → assume active (safe default)
+      //   if (isTokenActive) {
+      //     await Notification.create({
+      //       user: user._id,
+      //       title: "Blocked Login Attempt",
+      //       message: `Login attempt from a new device (${ deviceId }) was blocked.`,
+      //       type: "SECURITY"
+      //     });
 
-        if (isTokenActive) {
-          await Notification.create({
-            user: user._id,
-            title: "Blocked Login Attempt",
-            message: `Login attempt from a new device (${ deviceId }) was blocked.`,
-            type: "SECURITY"
-          });
+      //     await sendPushNotification({
+      //       fcmToken: user.fcmToken,
+      //       title: "Security Alert 🚨",
+      //       body: "Login attempt blocked from another device."
+      //     });
 
-          await sendPushNotification({
-            fcmToken: user.fcmToken,
-            title: "Security Alert 🚨",
-            body: "Login attempt blocked from another device."
-          });
-
-          return res.status(403).json({
-            message: "This user is already logged in on another device"
-          });
-        }
-        // Case 3: token is expired → allow login (falls through)
-      }
-
-      // ✅ Update deviceId, fcmToken, and tokenExpiresAt
+      //     return res.status(403).json({
+      //       message: "This user is already logged in on another device"
+      //     });
+      //   }
+      // }
       const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
-
       user.deviceId = deviceId;
       if (fcmToken) user.fcmToken = fcmToken;
       user.tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS); // ← key addition
       await user.save();
-
-      // ✅ Generate JWT (24h)
       const token = generateToken(user._id, deviceId);
-
-      // ✅ Set HttpOnly cookie
       res.cookie("token", token, {
         httpOnly: true,
         sameSite: "none",
@@ -136,7 +121,7 @@ export default {
         maxAge: TOKEN_EXPIRY_MS
       });
 
-      //     // Push notification on success
+      //Push notification on success
       if (token && user?.deviceId) {
         await sendPushNotification({
           fcmToken: user.fcmToken,
@@ -144,8 +129,6 @@ export default {
           body: "Login successful"
         });
       }
-
-      //     // Success response
       res.status(200).json({
         message: "Login successful",
         user: {
@@ -156,7 +139,6 @@ export default {
           token: token
         }
       });
-
     } catch (error) {
       console.error("Login Error:", error);
       res.status(500).json({ message: "Server error" });

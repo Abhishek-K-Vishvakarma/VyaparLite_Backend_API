@@ -21,7 +21,7 @@ app.use(cookieParser());
 
 // CORS setup
 const allowedOrigins = [
-  "https://vyapar-lite-frontend.vercel.app",
+  "https://vyapar-lite-frontend.vercel.app", "http://localhost:5173", "http://localhost:5174"
 ];
 
 app.use(cors({
@@ -44,7 +44,10 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   exposedHeaders: ["Set-Cookie"],
 }));
-
+//  app.use(cors({
+//    origin: "http://localhost:5173",
+//    credentials: true
+//  }))
 
 // Routes
 // app.use("/api/auth", authRoutes);
