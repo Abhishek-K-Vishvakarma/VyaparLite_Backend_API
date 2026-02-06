@@ -3,19 +3,30 @@ import Invoice from "../models/Invoice.js";
 import Shop from "../models/Shop.js";
 import Product from "../models/Product.js";
 import Notification from "../models/Notification.js";
+import User from "../models/User.js";
 import { generateInvoiceNumber } from "../utils/invoiceNumber.js";
 import { sendPushNotification } from "../utils/pushNotification.js";
 import { generateInvoicePDF } from "../utils/generateInvoice.js";
+
 export const createSale = async (req, res) => {
   try {
     const { items, paymentMethod } = req.body;
 
-    if (!items || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "No items in sale" });
     }
 
-    // 🔐 Resolve shop
-    const shop = await Shop.findOne({ owner: req.user._id });
+    // 🔐 Auth user (from JWT middleware)
+    const userId = req.user.id;
+
+    // 🔐 Fetch full user (needed for FCM token)
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized user" });
+    }
+
+    // 🏪 Resolve shop
+    const shop = await Shop.findOne({ owner: userId });
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
     }
@@ -23,6 +34,7 @@ export const createSale = async (req, res) => {
     let totalAmount = 0;
     const invoiceItems = [];
 
+    // 🧮 Process items
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) {
@@ -36,15 +48,14 @@ export const createSale = async (req, res) => {
         });
       }
 
-      // ✅ Deduct stock (grams or count)
+      // ✅ Deduct stock
       product.stock -= item.quantity;
       await product.save();
 
-      // ✅ Correct amount calculation
+      // 💰 Price calculation
       let itemTotal = 0;
-
       if (product.unit === "KG") {
-        // quantity is in grams
+        // quantity in grams
         itemTotal = (product.price / 1000) * item.quantity;
       } else {
         itemTotal = product.price * item.quantity;
@@ -56,38 +67,38 @@ export const createSale = async (req, res) => {
       invoiceItems.push({
         name: product.name,
         unit: product.unit,
-        qty: item.quantity, // grams or count
+        qty: item.quantity,
         price: product.price,
         total: itemTotal,
       });
 
-      // Attach snapshot price to sale item
+      // Attach snapshot to sale items
       item.price = product.price;
       item.unit = product.unit;
     }
 
     const invoiceNumber = generateInvoiceNumber();
 
-    // 🧾 Sale record
+    // 🧾 Create Sale
     const sale = await Sale.create({
       shop: shop._id,
       items,
       totalAmount,
       paymentMethod,
       invoiceNumber,
-      createdBy: req.user._id,
+      createdBy: userId,
     });
 
-    // 💰 GST
+    // 💸 GST calculation
     const gstPercent = 18;
     const gstAmount = (totalAmount * gstPercent) / 100;
     const cgst = gstAmount / 2;
     const sgst = gstAmount / 2;
 
-    // 📄 Invoice
+    // 📄 Create Invoice
     const invoice = await Invoice.create({
       shop: shop._id,
-      user: req.user._id,
+      user: userId,
       invoiceNumber,
       items: invoiceItems,
       subtotal: totalAmount,
@@ -99,35 +110,36 @@ export const createSale = async (req, res) => {
       pdfUrl: null,
     });
 
-    // 📄 Generate PDF
+    // 📄 Generate Invoice PDF
     const pdfUrl = await generateInvoicePDF(invoice, shop);
     invoice.pdfUrl = pdfUrl;
     await invoice.save();
 
-    // 🔔 Notification
+    // 🔔 In-app notification
     await Notification.create({
-      user: req.user._id,
+      user: userId,
       title: "New Sale Completed",
       message: `Invoice ${ invoiceNumber } generated (₹${ totalAmount.toFixed(2) })`,
       type: "SALE",
     });
 
     // 📲 Push notification
-    if (req.user.fcmToken) {
+    if (user.fcmToken) {
       await sendPushNotification({
-        fcmToken: req.user.fcmToken,
+        fcmToken: user.fcmToken,
         title: "Sale Successful 🧾",
         body: `Invoice ${ invoiceNumber } | ₹${ totalAmount.toFixed(2) }`,
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Sale & Invoice created successfully",
       sale,
       invoice,
     });
+
   } catch (error) {
     console.error("Create Sale Error:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
