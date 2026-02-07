@@ -9,26 +9,18 @@ import Shop from "../models/Shop.js";
 export const generatePDF = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
-    if (!invoice) {
+    if (!invoice || !invoice.pdfUrl) {
       return res.status(404).json({ message: "Invoice not found" });
     }
+    const base64Data = invoice.pdfUrl.split(",")[1];
+    const buffer = Buffer.from(base64Data, "base64");
 
-    if (invoice.pdfUrl) {
-      return res.json({ pdfUrl: invoice.pdfUrl });
-    }
-
-    // FETCH SHOP
-    const shop = await Shop.findById(invoice.shop);
-    if (!shop) {
-      return res.status(404).json({ message: "Shop not found" });
-    }
-    const pdfUrl = await generateInvoicePDF(invoice, shop);
-    invoice.pdfUrl = pdfUrl;
-    await invoice.save();
-    res.status(200).json({
-      message: "Invoice PDF generated",
-      pdfUrl
-    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=${ invoice.invoiceNumber }.pdf`
+    );
+    res.send(buffer);
   } catch (err) {
     console.error("PDF Error:", err);
     res.status(500).json({ message: "PDF generation failed" });
@@ -39,23 +31,24 @@ export const generatePDF = async (req, res) => {
 export const downloadInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(id)
+
     const invoice = await Invoice.findById(id);
-    console.log(invoice);
     if (!invoice || !invoice.pdfUrl) {
       return res.status(404).json({ message: "Invoice PDF not found" });
     }
 
-    const filePath = path.join(
-      process.cwd(),
-      invoice.pdfUrl
+    // ✅ Extract Base64 part
+    const base64Data = invoice.pdfUrl.split(",")[1];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    // ✅ Proper headers for download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=${ invoice.invoiceNumber }.pdf`
     );
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "File not exists on server" });
-    }
-
-    res.download(filePath);
+    return res.send(buffer);
 
   } catch (error) {
     console.error("Download Invoice Error:", error);

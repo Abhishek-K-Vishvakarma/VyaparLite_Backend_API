@@ -111,8 +111,9 @@ export const createSale = async (req, res) => {
     });
 
     // 📄 Generate Invoice PDF
-    const pdfUrl = await generateInvoicePDF(invoice, shop);
-    invoice.pdfUrl = pdfUrl;
+    const { buffer, fileName } = await generateInvoicePDF(invoice, shop);
+    // Convert to Base64 (safe for DB)
+    invoice.pdfUrl = `data:application/pdf;base64,${ buffer.toString("base64") }`;
     await invoice.save();
 
     // 🔔 In-app notification
@@ -139,7 +140,6 @@ export const createSale = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Create Sale Error:", error);
-    return res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 };
