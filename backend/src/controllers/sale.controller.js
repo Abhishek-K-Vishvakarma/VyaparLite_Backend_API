@@ -1,3 +1,4 @@
+// controllers/sale.controller.js
 import Sale from "../models/Sale.js";
 import Invoice from "../models/Invoice.js";
 import Shop from "../models/Shop.js";
@@ -16,120 +17,139 @@ export const createSale = async (req, res) => {
       return res.status(400).json({ message: "No items in sale" });
     }
 
-    // 🔐 Auth user (from JWT middleware)
     const userId = req.user.id;
 
-    // 🔐 Fetch full user (needed for FCM token)
     const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ message: "Unauthorized user" });
     }
 
-    // 🏪 Resolve shop
     const shop = await Shop.findOne({ owner: userId });
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    let totalAmount = 0;
+    let subtotalAmount = 0;
+    let totalTaxAmount = 0;
     const invoiceItems = [];
 
-    // 🧮 Process items
+    // 🧮 Process items with individual GST rates
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
 
-      // ❌ Stock check
-      if (product.stock < item.quantity) {
+      const quantityInBaseUnit = Number(item.quantity);
+
+      // Stock check
+      if (product.stock < quantityInBaseUnit) {
         return res.status(400).json({
-          message: `Insufficient stock for ${ product.name }`,
+          message: `Insufficient stock for ${ product.name }. Available: ${ product.stock } ${ product.unit }`,
         });
       }
 
-      // ✅ Deduct stock
-      product.stock -= item.quantity;
+      // Deduct stock
+      product.stock -= quantityInBaseUnit;
       await product.save();
 
-      // 💰 Price calculation
-      let itemTotal = 0;
-      if (product.unit === "KG") {
-        // quantity in grams
-        itemTotal = (product.price / 1000) * item.quantity;
-      } else {
-        itemTotal = product.price * item.quantity;
-      }
+      // ✅ Calculate item subtotal (before tax)
+      const itemSubtotal = Number(product.price) * quantityInBaseUnit;
 
-      totalAmount += itemTotal;
+      // ✅ Calculate GST based on product's GST rate
+      const gstRate = product.gstRate || 18;
+      const itemTax = (itemSubtotal * gstRate) / 100;
+      const itemTotal = itemSubtotal + itemTax;
 
-      // 🧾 Invoice snapshot
+      subtotalAmount += itemSubtotal;
+      totalTaxAmount += itemTax;
+
+      console.log(`Item: ${ product.name }`, {
+        category: product.category,
+        price: product.price,
+        quantity: quantityInBaseUnit,
+        gstRate: `${ gstRate }%`,
+        subtotal: itemSubtotal.toFixed(2),
+        tax: itemTax.toFixed(2),
+        total: itemTotal.toFixed(2),
+      });
+
+      // ✅ Invoice snapshot with GST details
       invoiceItems.push({
         name: product.name,
         unit: product.unit,
-        qty: item.quantity,
-        price: product.price,
+        qty: quantityInBaseUnit,
+        price: Number(product.price),
+        gstRate: gstRate,
+        taxAmount: itemTax,
+        subtotal: itemSubtotal,
         total: itemTotal,
       });
 
-      // Attach snapshot to sale items
-      item.price = product.price;
+      // Attach to sale items
+      item.price = Number(product.price);
       item.unit = product.unit;
+      item.gstRate = gstRate;
     }
 
     const invoiceNumber = generateInvoiceNumber();
 
-    // 🧾 Create Sale
+    // Create Sale
     const sale = await Sale.create({
       shop: shop._id,
       items,
-      totalAmount,
+      totalAmount: subtotalAmount + totalTaxAmount,
       paymentMethod,
       invoiceNumber,
       createdBy: userId,
     });
 
-    // 💸 GST calculation
-    const gstPercent = 18;
-    const gstAmount = (totalAmount * gstPercent) / 100;
-    const cgst = gstAmount / 2;
-    const sgst = gstAmount / 2;
+    // ✅ Calculate total CGST and SGST
+    const cgst = totalTaxAmount / 2;
+    const sgst = totalTaxAmount / 2;
+    const grandTotal = subtotalAmount + totalTaxAmount;
 
-    // 📄 Create Invoice
+    console.log(`Invoice totals:`, {
+      subtotal: subtotalAmount.toFixed(2),
+      totalTax: totalTaxAmount.toFixed(2),
+      cgst: cgst.toFixed(2),
+      sgst: sgst.toFixed(2),
+      grandTotal: grandTotal.toFixed(2),
+    });
+
+    // ✅ Create Invoice with detailed items
     const invoice = await Invoice.create({
       shop: shop._id,
       user: userId,
       invoiceNumber,
       items: invoiceItems,
-      subtotal: totalAmount,
-      tax: gstAmount,
+      subtotal: subtotalAmount,
+      tax: totalTaxAmount,
       cgst,
       sgst,
-      gstPercent,
-      grandTotal: totalAmount + gstAmount,
+      grandTotal,
       pdfUrl: null,
     });
 
-    // 📄 Generate Invoice PDF
+    // Generate PDF
     const { buffer, fileName } = await generateInvoicePDF(invoice, shop);
-    // Convert to Base64 (safe for DB)
     invoice.pdfUrl = `data:application/pdf;base64,${ buffer.toString("base64") }`;
     await invoice.save();
 
-    // 🔔 In-app notification
+    // Notification
     await Notification.create({
       user: userId,
       title: "New Sale Completed",
-      message: `Invoice ${ invoiceNumber } generated (₹${ totalAmount.toFixed(2) })`,
+      message: `Invoice ${ invoiceNumber } generated (₹${ grandTotal.toFixed(2) })`,
       type: "SALE",
     });
 
-    // 📲 Push notification
+    // Push notification
     if (user.fcmToken) {
       await sendPushNotification({
         fcmToken: user.fcmToken,
         title: "Sale Successful 🧾",
-        body: `Invoice ${ invoiceNumber } | ₹${ totalAmount.toFixed(2) }`,
+        body: `Invoice ${ invoiceNumber } | ₹${ grandTotal.toFixed(2) }`,
       });
     }
 
@@ -140,6 +160,7 @@ export const createSale = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Sale creation error:", error);
+    res.status(500).json({ message: error.message || "Server error" });
   }
 };

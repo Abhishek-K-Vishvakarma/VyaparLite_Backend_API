@@ -1,3 +1,4 @@
+// utils/generateInvoice.js
 import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import fs from "fs";
@@ -68,11 +69,12 @@ export const generateInvoicePDF = async (invoice, shop) => {
 
   y -= 20;
 
-  // TABLE HEADER
+  // ✅ TABLE HEADER with GST column
   page.drawText("Item", { x: 50, y, size: 11, font });
-  page.drawText("Qty", { x: 300, y, size: 11, font });
-  page.drawText("Price", { x: 360, y, size: 11, font });
-  page.drawText("Total", { x: 450, y, size: 11, font });
+  page.drawText("Qty", { x: 220, y, size: 11, font });
+  page.drawText("Price", { x: 300, y, size: 11, font });
+  page.drawText("GST", { x: 390, y, size: 11, font });
+  page.drawText("Total", { x: 470, y, size: 11, font });
 
   y -= 15;
   page.drawLine({
@@ -84,41 +86,122 @@ export const generateInvoicePDF = async (invoice, shop) => {
 
   y -= 15;
 
+  // ✅ ITEMS WITH FORMATTED QUANTITY + UNIT + GST
   invoice.items.forEach(item => {
+    const qty = Number(item.qty);
+    const price = Number(item.price);
+    const gstRate = Number(item.gstRate) || 18;
+    const total = Number(item.total);
+    let quantityDisplay;
+
+    // ✅ Format quantity with proper unit display
+    if (item.unit === "KG") {
+      const kg = Math.floor(qty);
+      const grams = Math.round((qty % 1) * 1000);
+
+      if (kg === 0 && grams > 0) {
+        quantityDisplay = `${ grams } g`;
+      } else if (grams === 0) {
+        quantityDisplay = `${ kg } KG`;
+      } else {
+        quantityDisplay = `${ kg } KG ${ grams } g`;
+      }
+    } else if (item.unit === "PIECE") {
+      quantityDisplay = `${ qty } PIECE`;
+    } else if (item.unit === "BOTTLE") {
+      quantityDisplay = `${ qty } BOTTLE`;
+    } else if (item.unit === "PACKET") {
+      quantityDisplay = `${ qty } PKT`;
+    } else {
+      quantityDisplay = `${ qty } ${ item.unit || '' }`;
+    }
+
+    // Product name
     page.drawText(item.name, { x: 50, y, size: 10, font });
-    page.drawText(String(item.qty), { x: 300, y, size: 10, font });
-    page.drawText(`₹${ item.price }`, { x: 360, y, size: 10, font });
-    page.drawText(`₹${ item.total }`, { x: 450, y, size: 10, font });
+
+    // Quantity with unit
+    page.drawText(quantityDisplay, { x: 220, y, size: 9, font });
+
+    // Price per unit
+    const priceLabel = item.unit === "PACKET" ? "PKT" :
+      item.unit === "BOTTLE" ? "BTL" :
+        item.unit === "PIECE" ? "PC" :
+          item.unit || "";
+    page.drawText(`₹${ price.toFixed(2) }/${ priceLabel }`, { x: 300, y, size: 8, font });
+
+    // ✅ GST Rate
+    page.drawText(`${ gstRate }%`, { x: 390, y, size: 9, font });
+
+    // Item total
+    page.drawText(`₹${ total.toFixed(2) }`, { x: 470, y, size: 10, font });
+
     y -= 18;
   });
 
   y -= 10;
   page.drawLine({
-    start: { x: 300, y },
+    start: { x: 220, y },
     end: { x: width - 50, y },
     thickness: 1,
     color: rgb(0.8, 0.8, 0.8)
   });
 
   y -= 20;
-  page.drawText(`Subtotal: ₹${ invoice.subtotal }`, { x: 350, y, size: 11, font });
-  y -= 15;
-  page.drawText(`Tax: ₹${ invoice.tax }`, { x: 350, y, size: 11, font });
-  y -= 15;
-  page.drawText(`CGST (9%): ₹${ invoice.cgst }`, { x: 350, y, size: 11, font });
-  y -= 15;
-  page.drawText(`SGST (9%): ₹${ invoice.sgst }`, { x: 350, y, size: 11, font });
-  y -= 15;
-  page.drawText(`Grand Total: ₹${ invoice.grandTotal }`, {
-    x: 350,
+
+  // ✅ Totals with proper number formatting
+  const subtotal = Number(invoice.subtotal);
+  const tax = Number(invoice.tax);
+  const cgst = Number(invoice.cgst);
+  const sgst = Number(invoice.sgst);
+  const grandTotal = Number(invoice.grandTotal);
+
+  page.drawText(`Subtotal: ₹${ subtotal.toFixed(2) }`, {
+    x: 370,
     y,
-    size: 13,
+    size: 11,
+    font
+  });
+
+  y -= 15;
+
+  page.drawText(`Total Tax: ₹${ tax.toFixed(2) }`, {
+    x: 370,
+    y,
+    size: 11,
+    font
+  });
+
+  y -= 15;
+
+  page.drawText(`CGST: ₹${ cgst.toFixed(2) }`, {
+    x: 370,
+    y,
+    size: 10,
+    font,
+    color: rgb(0.4, 0.4, 0.4)
+  });
+
+  y -= 15;
+
+  page.drawText(`SGST: ₹${ sgst.toFixed(2) }`, {
+    x: 370,
+    y,
+    size: 10,
+    font,
+    color: rgb(0.4, 0.4, 0.4)
+  });
+
+  y -= 20;
+
+  page.drawText(`Grand Total: ₹${ grandTotal.toFixed(2) }`, {
+    x: 370,
+    y,
+    size: 14,
     font
   });
 
   const pdfBytes = await pdfDoc.save();
 
-  // ✅ RETURN BUFFER + META
   return {
     buffer: Buffer.from(pdfBytes),
     fileName: `${ invoice.invoiceNumber }.pdf`

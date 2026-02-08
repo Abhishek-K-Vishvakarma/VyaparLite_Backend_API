@@ -3,8 +3,18 @@ import Shop from "../models/Shop.js";
 
 const convertToBaseUnit = (stock, unit) => {
   stock = Number(stock);
-  if (unit === "KG") return stock * 1000;
+  if (unit === "KG") return stock * 1000; // store KG in grams
   return stock; // PIECE, BOTTLE, PACKET
+};
+
+// Generate batch function
+const generateBatch = () => {
+  const date = new Date();
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `BATCH-${ y }${ m }${ d }-${ random }`;
 };
 
 export const addProduct = async (req, res) => {
@@ -13,8 +23,10 @@ export const addProduct = async (req, res) => {
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
     }
+
     const { name, unit, stock } = req.body;
-    //  Case-insensitive duplicate check
+
+    // Case-insensitive duplicate check
     const existingProduct = await Product.findOne({
       shop: shop._id,
       name: { $regex: `^${ name.trim() }$`, $options: "i" },
@@ -22,17 +34,20 @@ export const addProduct = async (req, res) => {
     if (existingProduct) {
       return res.status(400).json({ message: "Product already exists" });
     }
+
     const baseStock = convertToBaseUnit(stock, unit);
     if (baseStock < 0) {
       return res.status(400).json({ message: "Stock cannot be negative" });
     }
+
     const product = await Product.create({
       ...req.body,
       name: name.trim(),
-      stock: baseStock,       // stored in base unit
-      batch: generateBatch(),
+      stock: baseStock,       // store in base unit
+      batch: generateBatch(), // ✅ fixed
       shop: shop._id,
     });
+
     res.status(201).json({
       message: "Product added successfully",
       product,
@@ -42,6 +57,7 @@ export const addProduct = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 export const updateProduct = async (req, res) => {
   try {
