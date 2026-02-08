@@ -114,3 +114,41 @@ export const sendInvoiceByWhatsApp = async (req, res) => {
     res.status(500).json({ message: "WhatsApp sending failed" });
   }
 };
+
+// GET /invoice/list
+export const getInvoiceList = async (req, res) => {
+  try {
+    // Fetch all invoices (optionally filter by shop/user)
+    const invoices = await Invoice.find()
+      .populate("user", "name email") // get user name
+      .populate("shop", "name")       // get shop name if needed
+      .sort({ createdAt: -1 });       // latest first
+
+    // Map invoices for frontend
+    const data = invoices.map((inv) => ({
+      _id: inv._id,
+      invoiceNumber: inv.invoiceNumber,
+      items: inv.items.map((i) => ({
+        name: i.name,
+        unit: i.unit,
+        qty: i.qty,
+        price: i.price,
+        total: i.total,
+      })),
+      userName: inv.user?.name || "Unknown",
+      shopName: inv.shop?.name || "Unknown",
+      subtotal: inv.subtotal,
+      tax: inv.tax,
+      cgst: inv.cgst,
+      sgst: inv.sgst,
+      grandTotal: inv.grandTotal,
+      pdfUrl: inv.pdfUrl || null,
+      createdAt: inv.createdAt,
+    }));
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
