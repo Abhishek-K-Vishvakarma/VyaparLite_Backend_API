@@ -11,7 +11,7 @@ router.post("/login", authController.login);
 // Logout
 router.post("/logout", protect, authController.logout);
 router.get("/myProfile", protect, authController.myProfile);
-router.post('/forgot-password', protect, authController.forgotPassword);
-router.post('/verify-otp', protect, authController.verifyOTP);
-router.post('/reset-password', protect, authController.resetPassword);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/verify-otp', authController.verifyOTP);
+router.post('/reset-password', authController.resetPassword);
 export default router;

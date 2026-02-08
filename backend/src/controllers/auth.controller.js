@@ -3,16 +3,10 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/jwt.js";
 import Notification from "../models/Notification.js";
 import { sendPushNotification } from "../utils/pushNotification.js";
-import jwt from 'jsonwebtoken';
 import crypto, { verify } from "crypto";
-import otpGenerate from 'otp-generator';
-import nodeMailer from "nodemailer";
 import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const hashDevice = (value) => {
-  crypto.createHash("sha256").update(value).digest("hex");
-}
 // Register User
 export default {
   register: async (req, res) => {
