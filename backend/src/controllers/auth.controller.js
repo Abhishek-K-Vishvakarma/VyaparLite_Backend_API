@@ -278,6 +278,59 @@ export default {
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
-  }
+  },
+
+  changePassword: async (req, res) => {
+    try {
+      const userId = req.user.id; // authMiddleware se aata hai
+      const { oldPassword, newPassword, confirmPassword } = req.body;
+
+      // 1️⃣ Validate input
+      if (!oldPassword || !newPassword || !confirmPassword) {
+        return res.status(400).json({
+          message: "All fields are required",
+        });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({
+          message: "New password and confirm password do not match",
+        });
+      }
+
+      // 2️⃣ Find user
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      // 3️⃣ Verify old password
+      const isMatch = await bcrypt.compare(oldPassword, user.password);
+      if (!isMatch) {
+        return res.status(401).json({
+          message: "Old password is incorrect",
+        });
+      }
+
+      // 4️⃣ Hash & update new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
+
+      await user.save();
+
+      // 5️⃣ Success
+      res.status(200).json({
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({
+        message: "Server error",
+      });
+    }
+  },
 }
+
 
