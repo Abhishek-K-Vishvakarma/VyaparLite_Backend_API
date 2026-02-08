@@ -6,6 +6,10 @@ import { sendPushNotification } from "../utils/pushNotification.js";
 import jwt from 'jsonwebtoken';
 import crypto, { verify } from "crypto";
 import otpGenerate from 'otp-generator';
+import nodeMailer from "nodemailer";
+import { Resend } from 'resend';
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 const hashDevice = (value) => {
   crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -84,7 +88,7 @@ export default {
       //  DEVICE ENFORCEMENT — only block if token is still ACTIVE
       //  FIXED DEVICE ENFORCEMENT
       // if (user.deviceId && user.deviceId !== deviceId) {
-        // Case 2: tokenExpiresAt is null but deviceId exists → BLOCK (legacy/safe default)
+      // Case 2: tokenExpiresAt is null but deviceId exists → BLOCK (legacy/safe default)
       //   const isTokenActive = user.tokenExpiresAt
       //     ? new Date() < new Date(user.tokenExpiresAt)  // token exists → check expiry
       //     : true;                                        // token is null → assume active (safe default)
@@ -198,35 +202,67 @@ export default {
   forgotPassword: async (req, res) => {
     try {
       const { email } = req.body;
+
       const user = await User.findOne({ email });
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const otp = Math.floor(new Date(100 * Math.random() + 900000));
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // ✅ Correct OTP
+      const otp = Math.floor(100000 + Math.random() * 900000);
+
       await User.findOneAndUpdate(
         { email },
-        { otp, otpExpired: Date.now() + 1 * 60 * 1000 },
-        { new: true, runValidators: true }
+        {
+          otp,
+          isOtpVerify: false,
+          otpExpired: Date.now() + 5 * 60 * 1000
+        }
       );
-      res.status(200).json({
-        message: "Otp send to user!"
+      const { data, error } = await resend.emails.send({
+        from: 'VyaparLite <onboarding@resend.dev>',
+        to: ['vishabhishek019@gmail.com'],
+        subject: 'VyaparLite OTP Verification',
+        text: `Your VyaparLite OTP is ${ otp }. It is valid for 5 minutes. Do not share it with anyone.`,
+        html: `
+    <strong>VyaparLite OTP Verification</strong><br><br>
+    Your one-time password (OTP) is <strong>${ otp }</strong>.<br>
+    This OTP is valid for 5 minutes.<br><br>
+    For your security, do not share this OTP with anyone.<br><br>
+    — Team VyaparLite
+  `
+      });
+      // 'delivered@resend.dev',
+      if (error) {
+        return console.error({ error });
+      }
+
+      console.log({ data });
+      return res.status(200).json({
+        message: "OTP sent successfully"
       });
     } catch (error) {
-      res.status(500).json({ message: "Server error" });
+      console.error("Forgot Password Error:", error);
+      return res.status(500).json({ message: "Server error" });
     }
   },
 
   verifyOTP: async (req, res) => {
     try {
-      const {otp} = req.body;
-      const user = await User.findOne({otp});
-      if(otp !== user?.otp){
-         return res.status(400).json({message: "Otp not matched"});
+      const { email, otp } = req.body;
+      const user = await User.findOne({ email });
+      if (user?.isOtpVerify == true) {
+        res.status(400).json({ message: "Otp already verified!" });
       }
-      if(Date.now() > user?.otpExpired){
-        res.status(400).json({message: "Otp has been expired!"});
+      if (otp !== user?.otp) {
+        res.status(400).json({ message: "Otp not matched" });
+      }
+      if (Date.now() > user?.otpExpired) {
+        res.status(400).json({ message: "Otp has been expired!" });
         delete user?.otp;
       }
-      await User.findOneAndUpdate({otp}, {otp: null}, {new: true})
-      res.status(200).json({message: "User otp verified successfully!", status_code: 200});
+      await User.findOneAndUpdate({ otp }, { otp: null, isOtpVerify: true, }, { new: true })
+      res.status(200).json({ message: "User otp verified successfully!", status_code: 200 });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
@@ -236,11 +272,14 @@ export default {
     try {
       const { email, newPassword } = req.body;
       const user = await User.findOne({ email });
-      if(user?.email !== email){
-         return res.status(400).json({message: "User does not matched!"});
+      if (user?.email !== email) {
+        return res.status(400).json({ message: "User does not matched!" });
+      }
+      if (user?.isOtpVerify == false) {
+        res.status(400).json({ message: "OTP not verified!" });
       }
       const hashPassword = await bcrypt.hash(newPassword, 10);
-      await User.findOneAndUpdate({ email }, { password: hashPassword }, {new : true});
+      await User.findOneAndUpdate({ email }, { password: hashPassword }, { new: true });
       res.status(200).json({ message: "User reset password successfully!", status_code: 200 });
     } catch (error) {
       res.status(500).json({ message: "Server error" });

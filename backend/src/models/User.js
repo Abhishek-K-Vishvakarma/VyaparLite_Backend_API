@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   fcmToken: { type: String }, // For push notifications
   tokenExpiresAt: { type: Date, default: null },  // ← added this
   otp: String,
+  isOtpVerify: {type: Boolean, default: false},
   otpExpired: {type: Date, default: Date.now}
 }, { timestamps: true });
 
