@@ -8,7 +8,7 @@ import crypto, { verify } from "crypto";
 import otpGenerate from 'otp-generator';
 import nodeMailer from "nodemailer";
 import { Resend } from 'resend';
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY_FULL_ACCESS);
 
 const hashDevice = (value) => {
   crypto.createHash("sha256").update(value).digest("hex");
