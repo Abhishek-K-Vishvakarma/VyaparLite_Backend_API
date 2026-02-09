@@ -3,7 +3,7 @@ import Shop from "../models/Shop.js";
 
 const convertToBaseUnit = (stock, unit) => {
   stock = Number(stock);
-  if (unit === "KG") return stock * 1000; // store KG in grams
+  if (unit === "KG") return stock; // store KG in grams
   return stock; // PIECE, BOTTLE, PACKET
 };
 
@@ -44,7 +44,7 @@ export const addProduct = async (req, res) => {
       ...req.body,
       name: name.trim(),
       stock: baseStock,       // store in base unit
-      batch: generateBatch(), // ✅ fixed
+      batch: generateBatch(), // fixed
       shop: shop._id,
     });
 
