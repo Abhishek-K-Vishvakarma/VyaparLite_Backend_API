@@ -105,7 +105,8 @@ export default {
       //     });
       //   }
       // }
-      const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+      // const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+      const TOKEN_EXPIRY_MS = 1 * 60 * 1000;
       user.deviceId = deviceId;
       if (fcmToken) user.fcmToken = fcmToken;
       user.tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS); // ← key addition

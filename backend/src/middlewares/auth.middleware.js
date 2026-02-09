@@ -8,7 +8,7 @@ const protect = async (req, res, next) => {
     const token = req.cookies.token;
 
     if (!token) {
-      return res.status(401).json({ message: "Unauthorized - No token" });
+      return res.status(401).json({ message: "Unauthorized - No token", status : 401 });
     }
 
     const decoded = verifyToken(token);
