@@ -245,21 +245,35 @@ export default {
   verifyOTP: async (req, res) => {
     try {
       const { email, otp } = req.body;
+      // 1. Find user properly
       const user = await User.findOne({ email });
-      if (user?.isOtpVerify == true) {
-        res.status(400).json({ message: "Otp already verified!" });
+      if (!user) {
+        return res.status(400).json({ message: "User not found" });
       }
-      if (otp !== user?.otp) {
-        res.status(400).json({ message: "Otp not matched" });
+      // 2. Check if already verified
+      if (user.isOtpVerify) {
+        return res.status(400).json({ message: "OTP already verified!" });
       }
-      if (Date.now() > user?.otpExpired) {
-        res.status(400).json({ message: "Otp has been expired!" });
-        delete user?.otp;
+      // 3. Check OTP match
+      if (user.otp !== otp) {
+        return res.status(400).json({ message: "Invalid OTP" });
       }
-      await User.findOneAndUpdate({ otp }, { otp: null, isOtpVerify: true, }, { new: true })
-      res.status(200).json({ message: "User otp verified successfully!", status_code: 200 });
+      // 4. Check expiry
+      if (Date.now() > user.otpExpired) {
+        user.otp = null;
+        await user.save();
+        return res.status(400).json({ message: "OTP expired!" });
+      }
+      // 5. Update verification status
+      user.isOtpVerify = true;
+      user.otp = null;
+      await user.save();
+      return res.status(200).json({
+        message: "User OTP verified successfully!",
+        status_code: 200
+      });
     } catch (error) {
-      res.status(500).json({ message: "Server error" });
+      return res.status(500).json({ message: "Server error" });
     }
   },
 
@@ -280,13 +294,13 @@ export default {
       res.status(500).json({ message: "Server error" });
     }
   },
-
+  
   changePassword: async (req, res) => {
     try {
       const userId = req.user.id; // authMiddleware se aata hai
       const { oldPassword, newPassword, confirmPassword } = req.body;
 
-      // 1️⃣ Validate input
+      // Validate input
       if (!oldPassword || !newPassword || !confirmPassword) {
         return res.status(400).json({
           message: "All fields are required",
@@ -299,7 +313,7 @@ export default {
         });
       }
 
-      // 2️⃣ Find user
+      // Find user
       const user = await User.findById(userId);
       if (!user) {
         return res.status(404).json({
@@ -307,7 +321,7 @@ export default {
         });
       }
 
-      // 3️⃣ Verify old password
+      // Verify old password
       const isMatch = await bcrypt.compare(oldPassword, user.password);
       if (!isMatch) {
         return res.status(401).json({
@@ -315,13 +329,13 @@ export default {
         });
       }
 
-      // 4️⃣ Hash & update new password
+      // Hash & update new password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       user.password = hashedPassword;
 
       await user.save();
 
-      // 5️⃣ Success
+      // Success
       res.status(200).json({
         message: "Password changed successfully",
       });
